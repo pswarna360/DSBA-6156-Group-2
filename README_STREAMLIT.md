@@ -5,14 +5,17 @@ This Streamlit app is a professional presentation supplement for the Education R
 ## Run
 
 ```bash
+# From the folder containing this README:
 ./launch_streamlit.sh
 ```
 
-The launcher uses the local `.venv`, installs the pinned requirements if needed, and automatically chooses the first open Streamlit port starting at `8501`. To force a specific port:
+The launcher uses the local `.venv`, enforces the pinned requirements, and automatically chooses the first open Streamlit port starting at `8501`. To force a specific port:
 
 ```bash
 STREAMLIT_PORT=8503 ./launch_streamlit.sh
 ```
+
+If you see a scikit-learn/joblib artifact error such as `_RemainderColsList`, the app is probably being launched with a different Python environment, such as Anaconda. Use `./launch_streamlit.sh` from this folder so the model loads with the pinned scikit-learn version in `requirements.txt`.
 
 ## Deploy to Streamlit Community Cloud
 

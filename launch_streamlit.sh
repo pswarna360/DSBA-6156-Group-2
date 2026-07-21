@@ -10,9 +10,7 @@ if [[ ! -x "$VENV_PYTHON" ]]; then
   "$PYTHON_BIN" -m venv .venv
 fi
 
-if ! "$VENV_PYTHON" -c "import streamlit" >/dev/null 2>&1; then
-  "$VENV_PYTHON" -m pip install -r requirements.txt
-fi
+"$VENV_PYTHON" -m pip install -r requirements.txt
 
 PORT="${STREAMLIT_PORT:-}"
 

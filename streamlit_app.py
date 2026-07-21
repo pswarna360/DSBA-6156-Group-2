@@ -1,5 +1,6 @@
 from pathlib import Path
 from html import escape
+import importlib.metadata as importlib_metadata
 import importlib.util
 import re
 import subprocess
@@ -8,12 +9,47 @@ import sys
 
 BASE_DIR = Path(__file__).parent
 REQUIREMENTS_PATH = BASE_DIR / "requirements.txt"
-REQUIRED_MODULES = ("joblib", "numpy", "pandas", "plotly", "pyarrow", "sklearn")
+REQUIRED_PACKAGES = {
+    "joblib": "joblib",
+    "numpy": "numpy",
+    "pandas": "pandas",
+    "plotly": "plotly",
+    "pyarrow": "pyarrow",
+    "sklearn": "scikit-learn",
+    "streamlit": "streamlit",
+}
+
+
+def pinned_requirements() -> dict[str, str]:
+    pins = {}
+    if not REQUIREMENTS_PATH.exists():
+        return pins
+    for line in REQUIREMENTS_PATH.read_text().splitlines():
+        match = re.match(r"^\s*([A-Za-z0-9_.-]+)==([^\s#]+)", line)
+        if match:
+            pins[match.group(1).lower()] = match.group(2)
+    return pins
 
 
 def ensure_runtime_dependencies():
-    missing = [module for module in REQUIRED_MODULES if importlib.util.find_spec(module) is None]
-    if missing and REQUIREMENTS_PATH.exists():
+    pins = pinned_requirements()
+    needs_install = []
+    for module_name, package_name in REQUIRED_PACKAGES.items():
+        if importlib.util.find_spec(module_name) is None:
+            needs_install.append(package_name)
+            continue
+        expected_version = pins.get(package_name.lower())
+        if not expected_version:
+            continue
+        try:
+            installed_version = importlib_metadata.version(package_name)
+        except importlib_metadata.PackageNotFoundError:
+            needs_install.append(package_name)
+            continue
+        if installed_version != expected_version:
+            needs_install.append(package_name)
+
+    if needs_install and REQUIREMENTS_PATH.exists():
         subprocess.check_call(
             [sys.executable, "-m", "pip", "install", "-r", str(REQUIREMENTS_PATH)]
         )
