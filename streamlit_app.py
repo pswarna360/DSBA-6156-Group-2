@@ -1468,6 +1468,47 @@ def build_prediction(model, job_zone: int, debt: float, tuition: float, credenti
     return float(model.predict(row)[0])
 
 
+def program_profile_matches(
+    df: pd.DataFrame,
+    target_tuition: float,
+    target_salary: float,
+    target_zone: str,
+    credential: str,
+    limit: int = 8,
+) -> pd.DataFrame:
+    candidates = df.dropna(subset=["program_name", "credential_level", "tuition_in_state", "median_salary", "job_zone"]).copy()
+    candidates = candidates[candidates["tuition_in_state"] > 0]
+    if credential != "Any credential":
+        candidates = candidates[candidates["credential_level"] == credential]
+    if target_zone != "Any preparation level":
+        zone_value = int(target_zone.split()[1])
+        candidates = candidates[candidates["job_zone"].astype(int) == zone_value]
+    if candidates.empty:
+        return candidates
+
+    profiles = (
+        candidates.groupby(["program_name", "credential_level"], as_index=False)
+        .agg(
+            pathways=("median_salary", "size"),
+            median_salary=("median_salary", "median"),
+            median_tuition=("tuition_in_state", "median"),
+            typical_zone=("job_zone", "median"),
+        )
+    )
+    profiles = profiles[profiles["pathways"] >= 3].copy()
+    if profiles.empty:
+        return profiles
+
+    feature_cols = ["median_tuition", "median_salary"]
+    target_values = [float(target_tuition), float(target_salary)]
+    matrix = profiles[feature_cols].astype(float)
+    scale = matrix.std(ddof=0).replace(0, 1)
+    target = pd.Series(target_values, index=feature_cols)
+    distance = (((matrix - target) / scale) ** 2).mean(axis=1).pow(0.5)
+    profiles["match_score"] = 1 / (1 + distance)
+    return profiles.sort_values(["match_score", "median_salary", "pathways"], ascending=False).head(limit)
+
+
 def model_lab_page(df: pd.DataFrame) -> None:
     model, _, _ = load_artifacts()
     add_page_header(
@@ -1928,6 +1969,68 @@ def decision_takeaways_page(df: pd.DataFrame) -> None:
     )
     divider_label("Interpretation glossary")
     job_zone_legend(df["job_zone"].dropna().astype(int).unique().tolist())
+
+    divider_label("Profile matcher from the notebook")
+    add_callout(
+        "<strong>Notebook carry-over:</strong> the original recommender matched programs to a target financial profile. This version uses the shipped Streamlit fields: tuition, salary target, credential, and preparation level."
+    )
+    tuition_col, salary_col, zone_col, credential_col = st.columns(4)
+    with tuition_col:
+        target_tuition = st.slider(
+            "Target tuition",
+            0,
+            150000,
+            int(min(max(df["tuition_in_state"].median(skipna=True), 0), 150000)),
+            step=2500,
+            format="$%d",
+        )
+    with salary_col:
+        target_salary = st.slider(
+            "Target salary",
+            30000,
+            250000,
+            int(min(max(df["median_salary"].median(skipna=True), 30000), 250000)),
+            step=5000,
+            format="$%d",
+        )
+    with zone_col:
+        zone_choices = ["Any preparation level"] + [f"Zone {int(zone)}" for zone in sorted(df["job_zone"].dropna().astype(int).unique())]
+        target_zone = st.selectbox("Preparation level", zone_choices)
+    with credential_col:
+        credential_choices = ["Any credential"] + sorted(df["credential_level"].dropna().unique().tolist())
+        target_credential = st.selectbox("Credential", credential_choices)
+
+    matches = program_profile_matches(df, target_tuition, target_salary, target_zone, target_credential)
+    if matches.empty:
+        st.info("No program profiles match those constraints under the current filters.")
+    else:
+        table = matches[
+            [
+                "program_name",
+                "credential_level",
+                "typical_zone",
+                "pathways",
+                "median_tuition",
+                "median_salary",
+                "match_score",
+            ]
+        ].rename(
+            columns={
+                "program_name": "Program",
+                "credential_level": "Credential",
+                "typical_zone": "Prep",
+                "pathways": "Pathways",
+                "median_tuition": "Median tuition",
+                "median_salary": "Median salary",
+                "match_score": "Match",
+            }
+        )
+        table["Prep"] = table["Prep"].round().astype(int).map(lambda zone: f"Zone {zone}")
+        for col in ["Median tuition", "Median salary"]:
+            table[col] = table[col].map(dollars)
+        table["Match"] = table["Match"].map(lambda value: f"{value:.0%}")
+        st.dataframe(table, width="stretch", height=300, hide_index=True)
+        st.caption("Match scores are relative similarity scores for comparison, not acceptance odds or guaranteed returns.")
 
     left, right = st.columns([1.2, 0.8])
     with left:
