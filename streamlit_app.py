@@ -1,6 +1,25 @@
 from pathlib import Path
 from html import escape
+import importlib.util
 import re
+import subprocess
+import sys
+
+
+BASE_DIR = Path(__file__).parent
+REQUIREMENTS_PATH = BASE_DIR / "requirements.txt"
+REQUIRED_MODULES = ("joblib", "numpy", "pandas", "plotly", "pyarrow", "sklearn")
+
+
+def ensure_runtime_dependencies():
+    missing = [module for module in REQUIRED_MODULES if importlib.util.find_spec(module) is None]
+    if missing and REQUIREMENTS_PATH.exists():
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "-r", str(REQUIREMENTS_PATH)]
+        )
+
+
+ensure_runtime_dependencies()
 
 import joblib
 import numpy as np
@@ -11,7 +30,6 @@ import streamlit as st
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
-BASE_DIR = Path(__file__).parent
 ASSET_DIR = BASE_DIR / "streamlit_assets"
 DATA_PATH = ASSET_DIR / "presentation_data.parquet"
 MODEL_PATH = ASSET_DIR / "optimized_hgbr_model.joblib"
