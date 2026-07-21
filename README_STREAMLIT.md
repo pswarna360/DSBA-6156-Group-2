@@ -5,9 +5,25 @@ This Streamlit app is a professional presentation supplement for the Education R
 ## Run
 
 ```bash
-source .venv/bin/activate
-streamlit run streamlit_app.py
+./launch_streamlit.sh
 ```
+
+The launcher uses the local `.venv`, installs the pinned requirements if needed, and automatically chooses the first open Streamlit port starting at `8501`. To force a specific port:
+
+```bash
+STREAMLIT_PORT=8503 ./launch_streamlit.sh
+```
+
+## Deploy to Streamlit Community Cloud
+
+Push this repository to GitHub, then create a new app at <https://share.streamlit.io>.
+
+- Repository: `pswarna360/DSBA-6156-Group-2`
+- Branch: `main`
+- Main file path: `streamlit_app.py`
+- Python version: select `3.10` in Advanced settings
+
+No Streamlit secrets are required for this app. The deployed app uses the static files in `streamlit_assets/`.
 
 The app expects these files in `streamlit_assets/`:
 

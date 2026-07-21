@@ -1,1 +1,9 @@
+.DS_Store
 .venv/
+__pycache__/
+*.py[cod]
+
+# Local database credentials and packaged exports are not required by the app.
+Wallet/
+Wallet.zip
+streamlit_assets.zip
