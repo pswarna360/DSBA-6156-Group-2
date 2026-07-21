@@ -1,0 +1,12 @@
+pathwaydb_high = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.us-ashburn-1.oraclecloud.com))(connect_data=(service_name=g7b8c0f5316f3fd_pathwaydb_high.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+pathwaydb_medium = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.us-ashburn-1.oraclecloud.com))(connect_data=(service_name=g7b8c0f5316f3fd_pathwaydb_medium.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+pathwaydb_low = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.us-ashburn-1.oraclecloud.com))(connect_data=(service_name=g7b8c0f5316f3fd_pathwaydb_low.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+pathwaydb_tp = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.us-ashburn-1.oraclecloud.com))(connect_data=(service_name=g7b8c0f5316f3fd_pathwaydb_tp.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+pathwaydb_tpurgent = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.us-ashburn-1.oraclecloud.com))(connect_data=(service_name=g7b8c0f5316f3fd_pathwaydb_tpurgent.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+
+
