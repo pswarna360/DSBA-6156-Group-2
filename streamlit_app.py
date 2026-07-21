@@ -1967,12 +1967,9 @@ def decision_takeaways_page(df: pd.DataFrame) -> None:
             {"title": "Researchers", "body": "Use the error profile to prioritize next data: geography, experience, placement, and employers."},
         ]
     )
-    divider_label("Interpretation glossary")
-    job_zone_legend(df["job_zone"].dropna().astype(int).unique().tolist())
-
-    divider_label("Profile matcher from the notebook")
+    divider_label("Pathway profile matcher")
     add_callout(
-        "<strong>Notebook carry-over:</strong> the original recommender matched programs to a target financial profile. This version uses the shipped Streamlit fields: tuition, salary target, credential, and preparation level."
+        "<strong>Recommendation lens:</strong> match program profiles to a target tuition, salary, credential, and preparation level using the same pathway evidence shown throughout the supplement."
     )
     tuition_col, salary_col, zone_col, credential_col = st.columns(4)
     with tuition_col:
@@ -2063,6 +2060,9 @@ def decision_takeaways_page(df: pd.DataFrame) -> None:
             ]
         )
         st.dataframe(next_data, width="stretch", hide_index=True)
+
+    divider_label("Interpretation glossary")
+    job_zone_legend(df["job_zone"].dropna().astype(int).unique().tolist())
 
 
 def main() -> None:
