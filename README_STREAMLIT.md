@@ -15,7 +15,7 @@ The launcher uses the local `.venv`, enforces the pinned requirements, and autom
 STREAMLIT_PORT=8503 ./launch_streamlit.sh
 ```
 
-If you see a scikit-learn/joblib artifact error such as `_RemainderColsList`, the app is probably being launched with a different Python environment, such as Anaconda. Use `./launch_streamlit.sh` from this folder so the model loads with the pinned scikit-learn version in `requirements.txt`.
+The app reads precomputed prediction and persona fields from `streamlit_assets/presentation_data.parquet`, so no separate model server or secrets are required.
 
 ## Deploy to Streamlit Community Cloud
 
@@ -26,16 +26,13 @@ Push this repository to GitHub, then create a new app at <https://share.streamli
 - Main file path: `streamlit_app.py`
 - Python version: use the Streamlit Cloud default, or select `3.14` in Advanced settings
 
-The bundled model artifacts are saved with the scikit-learn version pinned in `requirements.txt`. If you change `scikit-learn`, resave the files in `streamlit_assets/` with the same version before deploying.
+The app avoids live scikit-learn/joblib loading on Streamlit Cloud. Prediction and persona fields are precomputed in `streamlit_assets/presentation_data.parquet`, and the scenario lab uses a lightweight NumPy estimator for interactive what-if inputs.
 
 No Streamlit secrets are required for this app. The deployed app uses the static files in `streamlit_assets/`.
 
 The app expects these files in `streamlit_assets/`:
 
 - `presentation_data.parquet`
-- `optimized_hgbr_model.joblib`
-- `kmeans_personas.joblib`
-- `kmeans_scaler.joblib`
 
 ## Application Sections
 

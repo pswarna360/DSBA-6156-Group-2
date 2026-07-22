@@ -3,24 +3,16 @@ from html import escape
 import re
 
 
-BASE_DIR = Path(__file__).parent
-import joblib
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
+BASE_DIR = Path(__file__).parent
 ASSET_DIR = BASE_DIR / "streamlit_assets"
 DATA_PATH = ASSET_DIR / "presentation_data.parquet"
-MODEL_PATH = ASSET_DIR / "optimized_hgbr_model.joblib"
-KMEANS_PATH = ASSET_DIR / "kmeans_personas.joblib"
-SCALER_PATH = ASSET_DIR / "kmeans_scaler.joblib"
-
-FEATURE_COLUMNS = ["job_zone", "median_debt", "tuition_in_state", "credential_level"]
-CLUSTER_COLUMNS = ["median_debt", "median_salary", "job_zone"]
 
 PERSONA_NAMES = {
     0: "Accessible Entry Pathways",
@@ -921,39 +913,29 @@ def load_data() -> pd.DataFrame:
     return df
 
 
-@st.cache_resource(show_spinner="Loading trained artifacts...")
-def load_artifacts():
-    model = joblib.load(MODEL_PATH)
-    kmeans = joblib.load(KMEANS_PATH)
-    scaler = joblib.load(SCALER_PATH)
-    return model, kmeans, scaler
-
-
-def feature_frame(df: pd.DataFrame) -> pd.DataFrame:
-    features = df[FEATURE_COLUMNS].copy()
-    tuition_median = features["tuition_in_state"].median()
-    debt_median = features["median_debt"].median()
-    features["tuition_in_state"] = features["tuition_in_state"].fillna(15000 if pd.isna(tuition_median) else tuition_median)
-    features["median_debt"] = features["median_debt"].fillna(25000 if pd.isna(debt_median) else debt_median)
-    return features
-
-
 @st.cache_data(show_spinner="Scoring salary model and personas...")
 def enrich_data(df: pd.DataFrame) -> pd.DataFrame:
-    model, kmeans, scaler = load_artifacts()
     enriched = df.copy()
-    enriched["predicted_salary"] = model.predict(feature_frame(enriched))
-    enriched["absolute_error"] = (enriched["median_salary"] - enriched["predicted_salary"]).abs()
-    enriched["residual"] = enriched["median_salary"] - enriched["predicted_salary"]
-    enriched["salary_to_tuition"] = enriched["median_salary"] / enriched["tuition_in_state"].replace(0, np.nan)
-
-    cluster_source = enriched[CLUSTER_COLUMNS].copy()
-    for col in CLUSTER_COLUMNS:
-        cluster_source[col] = cluster_source[col].fillna(cluster_source[col].median())
-    enriched["persona_id"] = kmeans.predict(scaler.transform(cluster_source))
-    enriched["persona"] = enriched["persona_id"].map(PERSONA_NAMES).fillna(
-        enriched["persona_id"].map(lambda value: f"Cluster {value}")
-    )
+    if "predicted_salary" not in enriched:
+        estimator = build_salary_estimator(enriched)
+        enriched["predicted_salary"] = [
+            build_prediction(
+                estimator,
+                int(row.job_zone),
+                row.median_debt,
+                row.tuition_in_state,
+                row.credential_level,
+            )
+            for row in enriched.itertuples()
+        ]
+    if "absolute_error" not in enriched:
+        enriched["absolute_error"] = (enriched["median_salary"] - enriched["predicted_salary"]).abs()
+    if "residual" not in enriched:
+        enriched["residual"] = enriched["median_salary"] - enriched["predicted_salary"]
+    if "salary_to_tuition" not in enriched:
+        enriched["salary_to_tuition"] = enriched["median_salary"] / enriched["tuition_in_state"].replace(0, np.nan)
+    if "persona" not in enriched:
+        enriched["persona"] = "Pathway Segment"
     return enriched
 
 
@@ -1125,14 +1107,17 @@ def metrics_summary(df: pd.DataFrame) -> dict[str, float]:
         return {}
     y_true = df["median_salary"]
     y_pred = df["predicted_salary"]
+    residuals = y_true - y_pred
+    total_variance = float(((y_true - y_true.mean()) ** 2).sum())
+    r2 = np.nan if total_variance == 0 else 1 - float((residuals**2).sum()) / total_variance
     return {
         "records": len(df),
         "occupations": df["occupation_title"].nunique(),
         "programs": df["program_name"].nunique(),
         "institutions": df["institution_name"].nunique(),
-        "r2": r2_score(y_true, y_pred) if len(df) > 1 else np.nan,
-        "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
-        "mae": float(mean_absolute_error(y_true, y_pred)),
+        "r2": r2 if len(df) > 1 else np.nan,
+        "rmse": float(np.sqrt((residuals**2).mean())),
+        "mae": float(residuals.abs().mean()),
         "median_salary": float(df["median_salary"].median()),
         "median_tuition": float(df["tuition_in_state"].median()),
     }
@@ -1437,18 +1422,51 @@ def exploration_page(df: pd.DataFrame) -> None:
         st.dataframe(table, width="stretch", height=260, hide_index=True)
 
 
-def build_prediction(model, job_zone: int, debt: float, tuition: float, credential: str) -> float:
-    row = pd.DataFrame(
-        [
-            {
-                "job_zone": job_zone,
-                "median_debt": float(debt),
-                "tuition_in_state": float(tuition),
-                "credential_level": credential,
-            }
-        ]
-    )
-    return float(model.predict(row)[0])
+@st.cache_data(show_spinner="Preparing scenario estimator...")
+def build_salary_estimator(df: pd.DataFrame) -> dict[str, object]:
+    source = df.dropna(subset=["job_zone", "median_debt", "tuition_in_state", "credential_level"]).copy()
+    target_col = "predicted_salary" if "predicted_salary" in source else "median_salary"
+    source = source.dropna(subset=[target_col])
+    credentials = sorted(source["credential_level"].astype(str).unique().tolist())
+    baseline_credential = credentials[0] if credentials else "Unknown"
+    credential_columns = [credential for credential in credentials if credential != baseline_credential]
+
+    debt = np.log1p(source["median_debt"].astype(float).clip(lower=0).to_numpy())
+    tuition = np.log1p(source["tuition_in_state"].astype(float).clip(lower=0).to_numpy())
+    zone = source["job_zone"].astype(float).to_numpy()
+    parts = [np.ones(len(source)), zone, debt, tuition]
+    for credential in credential_columns:
+        parts.append((source["credential_level"].astype(str).to_numpy() == credential).astype(float))
+    design = np.column_stack(parts)
+    target = source[target_col].astype(float).to_numpy()
+    coefficients, *_ = np.linalg.lstsq(design, target, rcond=None)
+    low = float(np.nanpercentile(target, 1))
+    high = float(np.nanpercentile(target, 99))
+    return {
+        "coefficients": coefficients,
+        "credentials": credential_columns,
+        "baseline_credential": baseline_credential,
+        "fallback_debt": float(source["median_debt"].median()),
+        "fallback_tuition": float(source["tuition_in_state"].median()),
+        "low": max(0.0, low * 0.8),
+        "high": high * 1.2,
+    }
+
+
+def build_prediction(estimator: dict[str, object], job_zone: int, debt: float, tuition: float, credential: str) -> float:
+    fallback_debt = float(estimator["fallback_debt"])
+    fallback_tuition = float(estimator["fallback_tuition"])
+    debt_value = fallback_debt if pd.isna(debt) else float(debt)
+    tuition_value = fallback_tuition if pd.isna(tuition) else float(tuition)
+    values = [
+        1.0,
+        float(job_zone),
+        float(np.log1p(max(0.0, debt_value))),
+        float(np.log1p(max(0.0, tuition_value))),
+    ]
+    values.extend(1.0 if credential == item else 0.0 for item in estimator["credentials"])
+    prediction = float(np.dot(np.asarray(values), estimator["coefficients"]))
+    return float(np.clip(prediction, float(estimator["low"]), float(estimator["high"])))
 
 
 def program_profile_matches(
@@ -1493,7 +1511,7 @@ def program_profile_matches(
 
 
 def model_lab_page(df: pd.DataFrame) -> None:
-    model, _, _ = load_artifacts()
+    estimator = build_salary_estimator(df)
     add_page_header(
         "Model Lab",
         "A scenario sandbox for testing how the trained salary model responds to credential, cost, and preparation assumptions.",
@@ -1525,7 +1543,7 @@ def model_lab_page(df: pd.DataFrame) -> None:
         debt = st.slider("Median debt", 0, 150000, debt_default, step=2500, format="$%d")
         tuition = st.slider("In-state tuition", 0, 150000, tuition_default, step=2500, format="$%d")
 
-        prediction = build_prediction(model, job_zone, debt, tuition, credential)
+        prediction = build_prediction(estimator, job_zone, debt, tuition, credential)
 
     nearby = df[
         (df["job_zone"].astype(int) == int(job_zone))
@@ -1554,7 +1572,7 @@ def model_lab_page(df: pd.DataFrame) -> None:
             ]
         )
         divider_label("Preparation ladder at this cost and credential")
-        zone_prediction_ladder(model, zone_options, debt, tuition, credential, int(job_zone))
+        zone_prediction_ladder(estimator, zone_options, debt, tuition, credential, int(job_zone))
         st.caption("The highlighted card is the selected Job Zone; the other cards keep credential, debt, and tuition fixed.")
 
     divider_label("Cost sensitivity at the selected preparation level")
@@ -1563,7 +1581,7 @@ def model_lab_page(df: pd.DataFrame) -> None:
         {
             "Tuition": tuition_values,
             "Predicted salary": [
-                build_prediction(model, job_zone, debt, value, credential) for value in tuition_values
+                build_prediction(estimator, job_zone, debt, value, credential) for value in tuition_values
             ],
         }
     )
@@ -1730,7 +1748,6 @@ def performance_page(df: pd.DataFrame) -> None:
 
 
 def personas_page(df: pd.DataFrame) -> None:
-    _, kmeans, scaler = load_artifacts()
     add_page_header(
         "Pathway Personas",
         "K-Means summarizes pathway patterns into interpretable groups for salary, debt, and preparation level.",
