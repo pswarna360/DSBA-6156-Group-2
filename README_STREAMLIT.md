@@ -26,6 +26,8 @@ Push this repository to GitHub, then create a new app at <https://share.streamli
 - Main file path: `streamlit_app.py`
 - Python version: select `3.10` in Advanced settings
 
+If an existing deployment log shows a different Python version, such as `Python 3.14.6`, delete that Streamlit Cloud app and deploy it again with Python `3.10` selected. Streamlit Community Cloud does not change the Python interpreter in place after an app has already been created.
+
 No Streamlit secrets are required for this app. The deployed app uses the static files in `streamlit_assets/`.
 
 The app expects these files in `streamlit_assets/`:
